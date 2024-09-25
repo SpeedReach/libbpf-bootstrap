@@ -1,0 +1,16 @@
+syntax = "proto3";
+option go_package = "github.com/SpeedReach/ebpf_consensus/pb";
+
+service HelloService{
+
+    rpc Hi(HelloRequest) returns (HelloResponse);
+
+}
+
+message HelloRequest{
+    int32 a = 1;
+}
+
+message HelloResponse{
+    int32 b = 1;
+}
