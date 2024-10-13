@@ -20,13 +20,28 @@
 #define TCP_SIZE sizeof(struct tcphdr)
 
 
+
 static __always_inline struct tcphdr* try_parse_tcphdr(void* data, void* data_end);
 static __always_inline struct udphdr* try_parse_udphdr(void* data, void* data_end);
 static __always_inline int handle_udp(struct __sk_buff *ctx, struct udphdr* udphdr);
 
+
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);  
+    __uint(max_entries, 1);           
+    __type(key, u32);               
+    __type(value, u32);             
+} counter_map SEC(".maps");
+
+
+
 SEC("tc")
 int tc_ingress(struct __sk_buff *ctx)
 {
+
+    u64 *count;
+
+
 	void *data = (void *)(long)ctx->data;
 	void *data_end = (void *)(long)ctx->data_end;
 
@@ -34,7 +49,7 @@ int tc_ingress(struct __sk_buff *ctx)
     struct udphdr* udphdr = try_parse_udphdr(data, data_end);
 
    	if(udphdr){
-       return handle_udp(ctx, udphdr);
+        return handle_udp(ctx, udphdr);
     }
 
 	return TC_ACT_OK;
@@ -43,6 +58,8 @@ int tc_ingress(struct __sk_buff *ctx)
 
 
 static __always_inline struct udphdr* try_parse_udphdr(void* data, void* data_end) {
+
+    
     if (data + ETH_SIZE > data_end)
         return 0;
     struct ethhdr* ethhdr = data;
@@ -66,16 +83,29 @@ static __always_inline struct udphdr* try_parse_udphdr(void* data, void* data_en
 
 
 
-int udp_dest[2] = {50051, 50052};
+int udp_dest[5] = {7073, 8073, 9073, 11073, 10073};
 
 static __always_inline int handle_udp(struct __sk_buff *ctx,struct udphdr* udphdr) {
+    const u32 key = 0;
+    const u32 initial_value = 1;
 
-    if(bpf_ntohs(udphdr->dest) == 50050){
+    if(bpf_ntohs(udphdr->dest) == 7072){
+        u32 *count = bpf_map_lookup_elem(&counter_map, &key);
+        if (count) {
+            __sync_fetch_and_add(count, 1);
+        }
+        else{
+            count = &initial_value;
+            bpf_map_update_elem(&counter_map, &key, &initial_value, BPF_ANY);
+        }
+        bpf_printk("udp %d", *count);
+
 		for (int i = 0; i < 2; i++) {
 			u16 new_dest = bpf_htons(udp_dest[i]);
         	int ret = bpf_skb_store_bytes(ctx, ETH_SIZE + IP_SIZE + offsetof(struct udphdr, dest), &new_dest, sizeof(u16), BPF_F_RECOMPUTE_CSUM);
         	bpf_printk("store dest %d %d ", ret, i);
-			u32 seq = i;
+            
+            u32 seq = *count;
 			ret = bpf_skb_store_bytes(ctx, ctx->data_end - sizeof(u32) - ctx->data, &seq, sizeof(u32), BPF_F_RECOMPUTE_CSUM);
 			bpf_printk("store seq %d %d", ret, i);
 			ret = bpf_clone_redirect(ctx, ctx->ifindex, 0);

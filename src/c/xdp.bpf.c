@@ -44,7 +44,7 @@ int xdp_pass(struct xdp_md *ctx)
 
 
 static __always_inline int handle_tcp(struct xdp_md *ctx,struct tcphdr* tcphdr) {
-    if(bpf_ntohs(tcphdr->dest) == 50050){
+    if(bpf_ntohs(tcphdr->dest) == 7072){
         u16 new_dest = bpf_htons(50051);
 
         int ret = bpf_xdp_store_bytes(ctx, ETH_SIZE + IP_SIZE + offsetof(struct tcphdr, dest), &new_dest, sizeof(u16));

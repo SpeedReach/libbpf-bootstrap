@@ -10,7 +10,7 @@ import (
 
 func StartClient() {
 	// Define the server address (change "localhost" and port if needed)
-	serverAddr, err := net.ResolveUDPAddr("udp", "localhost:50050")
+	serverAddr, err := net.ResolveUDPAddr("udp", "localhost:7072")
 	if err != nil {
 		fmt.Printf("Error resolving address: %v\n", err)
 		os.Exit(1)
