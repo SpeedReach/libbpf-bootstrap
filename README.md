@@ -1,6 +1,13 @@
 # eBPF Sequencer
 
-# Building
+## Getting the source code
+
+Download the git repository and check out submodules:
+```shell
+$ git clone --recurse-submodules https://github.com/SpeedReach/libbpf-bootstrap.git
+```
+
+## Building
 Forked from libbpf-bootstrap, uses Makefile for build system.
 
 ## Install Dependencies
@@ -16,12 +23,6 @@ $ apt install clang libelf1 libelf-dev zlib1g-dev
 On CentOS/Fedora, you need:
 ```shell
 $ dnf install clang elfutils-libelf elfutils-libelf-devel zlib-devel
-```
-## Getting the source code
-
-Download the git repository and check out submodules:
-```shell
-$ git clone --recurse-submodules https://github.com/libbpf/libbpf-bootstrap
 ```
 
 ## Run the sequencer
