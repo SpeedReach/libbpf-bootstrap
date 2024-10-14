@@ -28,7 +28,7 @@ func StartClient() {
 		// Send the message to the server
 		_, err := conn.Write([]byte(fmt.Sprintf("Hi %d from client!!    ", rand.Int())))
 		if err != nil {
-			fmt.Printf("Error sending data: %v\n", err)
+			fmtz.Printf("Error sending data: %v\n", err)
 			continue
 		}
 		time.Sleep(time.Second)

@@ -21,6 +21,7 @@
 static __always_inline struct tcphdr *try_parse_tcphdr(void *data, void *data_end);
 static __always_inline struct udphdr *try_parse_udphdr(void *data, void *data_end);
 static __always_inline int handle_udp(struct __sk_buff *ctx, struct udphdr *udphdr);
+static __always_inline int handle_tcp(struct __sk_buff *ctx, struct tcphdr *tcphdr);
 
 struct {
 	__uint(type, BPF_MAP_TYPE_ARRAY);
@@ -40,6 +41,11 @@ int tc_ingress(struct __sk_buff *ctx)
 	if (udphdr) {
 		return handle_udp(ctx, udphdr);
 	}
+
+    struct tcphdr* tcphdr = try_parse_tcphdr(data, data_end);
+    if (tcphdr) {
+        return handle_tcp(ctx, tcphdr);
+    }
 
 	return TC_ACT_OK;
 }
@@ -62,6 +68,29 @@ static __always_inline struct udphdr *try_parse_udphdr(void *data, void *data_en
 		return 0;
 
 	if (data + ETH_SIZE + IP_SIZE + UDP_SIZE > data_end)
+		return 0;
+
+	return data + ETH_SIZE + IP_SIZE;
+}
+
+static __always_inline struct tcphdr *try_parse_tcphdr(void *data, void *data_end)
+{
+	if (data + ETH_SIZE > data_end)
+		return 0;
+	struct ethhdr *ethhdr = data;
+
+	if (bpf_ntohs(ethhdr->h_proto) != ETH_P_IP)
+		return 0;
+
+	if (data + ETH_SIZE + IP_SIZE > data_end)
+		return 0;
+
+	struct iphdr *iphdr = data + ETH_SIZE;
+
+	if (iphdr->protocol != IP_P_TCP)
+		return 0;
+
+	if (data + ETH_SIZE + IP_SIZE + TCP_SIZE > data_end)
 		return 0;
 
 	return data + ETH_SIZE + IP_SIZE;
@@ -102,5 +131,55 @@ static __always_inline int handle_udp(struct __sk_buff *ctx, struct udphdr *udph
 
 	return TC_ACT_OK;
 }
+
+
+static __always_inline int handle_tcp(struct __sk_buff *ctx, struct tcphdr *udphdr)
+{
+	const u32 key = 0;
+	const u32 initial_value = 1;
+
+	if (bpf_ntohs(udphdr->dest) == 7072) {
+		u32 *count = bpf_map_lookup_elem(&counter_map, &key);
+		if (count) {
+			__sync_fetch_and_add(count, 1);
+		} else {
+			count = &initial_value;
+			bpf_map_update_elem(&counter_map, &key, &initial_value, BPF_ANY);
+		}
+
+		for (int i = 0; i < 2; i++) {
+			u16 new_dest = bpf_htons(udp_dest[i]);
+			int ret = bpf_skb_store_bytes(
+				ctx, ETH_SIZE + IP_SIZE + offsetof(struct tcphdr, dest), &new_dest,
+				sizeof(u16), BPF_F_RECOMPUTE_CSUM);
+			bpf_printk("store dest %d %d ", ret, i);
+
+			u32 seq = *count;
+			ret = bpf_skb_store_bytes(ctx, ctx->data_end - sizeof(u32) - ctx->data,
+						  &seq, sizeof(u32), BPF_F_RECOMPUTE_CSUM);
+			bpf_printk("store seq %d %d", ret, i);
+			ret = bpf_clone_redirect(ctx, ctx->ifindex, 0);
+			bpf_printk("redirect %d %d", ret, i);
+		}
+		return TC_ACT_SHOT;
+	}
+
+    u16 source = bpf_ntohs(udphdr->source);
+    for(int i=0;i<5;i ++) {
+        u16 new_src = bpf_htons(7072);
+        if (source == udp_dest[i]) {
+            int ret = bpf_skb_store_bytes(
+				ctx, ETH_SIZE + IP_SIZE + offsetof(struct tcphdr, source), &new_src,
+				sizeof(u16), BPF_F_RECOMPUTE_CSUM);
+            ret = bpf_clone_redirect(ctx, ctx->ifindex, 0);
+
+            return TC_ACT_SHOT;   
+        }
+    }
+
+	return TC_ACT_OK;
+}
+
+
 
 char __license[] SEC("license") = "GPL";
