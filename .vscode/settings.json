@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "bpf_helpers.h": "c",
+        "bpf_tracing.h": "c"
     }
 }

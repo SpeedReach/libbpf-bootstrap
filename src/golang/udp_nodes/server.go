@@ -8,7 +8,7 @@ import (
 )
 
 func StartServer(serverId int, port int) {
-	addr, err := resolveUDPAddr("localhost", port)
+	addr, err := resolveUDPAddr("127.0.0.1", port)
 	if err != nil {
 		panic(err)
 	}
