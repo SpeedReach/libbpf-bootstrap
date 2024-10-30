@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+var useEbpf = false
+
 func StartClient() {
 	// Define the server address (change "localhost" and port if needed)
 	serverAddr, err := net.ResolveUDPAddr("udp", "127.0.0.2:7072")
