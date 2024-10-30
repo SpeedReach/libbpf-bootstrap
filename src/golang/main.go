@@ -11,8 +11,8 @@ func main() {
 }
 
 func udp_start() {
-	go udp_nodes.StartServer(0, 7072)
-	go udp_nodes.StartServer(1, 8072)
+	go udp_nodes.StartServer(0, 7073)
+	go udp_nodes.StartServer(1, 8073)
 	time.Sleep(time.Second)
 	udp_nodes.StartClient()
 }

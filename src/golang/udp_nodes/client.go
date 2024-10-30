@@ -11,14 +11,13 @@ import (
 func StartClient() {
 	// Define the server address (change "localhost" and port if needed)
 	serverAddr, err := net.ResolveUDPAddr("udp", "127.0.0.2:7072")
-	clientAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:2223")
 	if err != nil {
 		fmt.Printf("Error resolving address: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Create a UDP connection
-	conn, err := net.DialUDP("udp", clientAddr, serverAddr)
+	conn, err := net.DialUDP("udp", nil, serverAddr)
 	if err != nil {
 		fmt.Printf("Error dialing UDP: %v\n", err)
 		os.Exit(1)

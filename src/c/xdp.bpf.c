@@ -74,8 +74,8 @@ static __always_inline struct hdr try_parse_udp(void* data, void* data_end){
 }
 
 int udp_dest[5] = { 7073, 8073, 9073, 11073, 10073 };
-uint32_t sequencer_addr = (127 << 24) | 2;
-uint32_t server_addr = (127 << 24) | 1;
+uint32_t sequencer_addr = (192 << 24 ) | (168 << 16 ) | (1<<8) | 1;
+uint32_t server_addr = (192 << 24 ) | (168 << 16 ) | (1<<8) | 2;
 
 uint8_t lo_mac[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
@@ -107,7 +107,7 @@ static __always_inline int handle_udp(struct xdp_md *ctx, struct hdr hdr)
 	const u32 initial_value = 1;
 	
 	if(bpf_ntohs(hdr.udp->dest) == 7072){
-		bpf_printk("handle udp %d, interface %d", bpf_ntohl(hdr.ip->daddr), hdr.eth->h_dest[5]);
+		bpf_printk("handle udp %d, interface %d", bpf_ntohl(hdr.ip->daddr), ctx->ingress_ifindex);
 		
 	}
 
@@ -120,11 +120,9 @@ static __always_inline int handle_udp(struct xdp_md *ctx, struct hdr hdr)
 			ctx, ETH_SIZE + offsetof(struct iphdr, daddr), &new_addr,
 			sizeof(u32));
 
-		ret = bpf_xdp_store_bytes(ctx, offsetof(struct ethhdr, h_dest), (void*) &lo_mac[0], 6);
+		//ret = bpf_xdp_store_bytes(ctx, offsetof(struct ethhdr, h_dest), (void*) &lo_mac[0], 6);
 
 		hdr.ip->check = iph_csum(hdr.ip);
-
-		bpf_printk("store addr %d", ret);
 		return XDP_TX;
 	}
 
