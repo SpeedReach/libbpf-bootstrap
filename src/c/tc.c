@@ -2,6 +2,11 @@
 /* Copyright (c) 2022 Hengqi Chen */
 #include <signal.h>
 #include <unistd.h>
+
+
+#include <net/if.h>
+#include <linux/if_link.h>
+
 #include "tc.skel.h"
 
 #define LO_IFINDEX 1
@@ -20,9 +25,23 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va
 
 int main(int argc, char **argv)
 {
-	DECLARE_LIBBPF_OPTS(bpf_tc_hook, tc_hook, .ifindex = LO_IFINDEX,
+	if (argc != 2) {
+        fprintf(stderr, "usage: %s <iface>\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    const char *iface = argv[1];
+    unsigned int ifindex = if_nametoindex(iface);
+    if (!ifindex) {
+        perror("failed to resolve iface to ifindex");
+        return EXIT_FAILURE;
+    }
+
+	DECLARE_LIBBPF_OPTS(bpf_tc_hook, tc_hook, .ifindex = ifindex,
 			    .attach_point = BPF_TC_INGRESS);
 	DECLARE_LIBBPF_OPTS(bpf_tc_opts, tc_opts, .handle = 1, .priority = 1);
+
+
 	bool hook_created = false;
 	struct tc_bpf *skel;
 	int err;

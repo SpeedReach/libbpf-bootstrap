@@ -73,9 +73,11 @@ static __always_inline struct hdr try_parse_udp(void* data, void* data_end){
 	return (struct hdr){eth,ip, udp};
 }
 
-int udp_dest[5] = { 7073, 8073, 9073, 11073, 10073 };
-uint32_t sequencer_addr = (192 << 24 ) | (168 << 16 ) | (1<<8) | 1;
-uint32_t server_addr = (192 << 24 ) | (168 << 16 ) | (1<<8) | 2;
+uint16_t sequencer_port = 7072;
+uint32_t sequencer_addr = (127 << 24 ) | (0 << 16 ) | (0<<8) | 2;
+uint16_t server_port = 7073;
+uint32_t server_addr = (127 << 24 ) | (0 << 16 ) | (0<<8) | 1;
+
 
 uint8_t lo_mac[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
@@ -105,28 +107,32 @@ static __always_inline int handle_udp(struct xdp_md *ctx, struct hdr hdr)
 {
 	const u32 key = 0;
 	const u32 initial_value = 1;
+
+	if (bpf_ntohs(hdr.udp->dest) != sequencer_port) {
+		return XDP_PASS;
+	}
+	if (bpf_ntohl(hdr.ip->daddr) != sequencer_addr) {
+		return XDP_PASS;
+	}
+
+	bpf_printk("handle udp %d, interface %d", bpf_ntohl(hdr.ip->daddr), ctx->ingress_ifindex);
 	
-	if(bpf_ntohs(hdr.udp->dest) == 7072){
-		bpf_printk("handle udp %d, interface %d", bpf_ntohl(hdr.ip->daddr), ctx->ingress_ifindex);
-		
-	}
+	bpf_printk("origin %u", sequencer_addr);
+	bpf_printk("udp packet received");
+	u32 new_addr = bpf_htonl(server_addr);
 
-	if (bpf_ntohl(hdr.ip->daddr) == sequencer_addr){
-		bpf_printk("origin %u", sequencer_addr);
-		bpf_printk("udp packet received");
-		u32 new_addr = bpf_htonl(server_addr);
+	int ret = bpf_xdp_store_bytes(
+		ctx, ETH_SIZE + offsetof(struct iphdr, daddr), &new_addr,
+		sizeof(u32));
+	bpf_printk("ret %d", ret);
+	
+	u16 new_port = bpf_htons(server_port);
+	ret = bpf_xdp_store_bytes(
+		ctx, ETH_SIZE + IP_SIZE + offsetof(struct udphdr, dest), &new_port,
+		sizeof(u16));
 
-		int ret = bpf_xdp_store_bytes(
-			ctx, ETH_SIZE + offsetof(struct iphdr, daddr), &new_addr,
-			sizeof(u32));
-
-		//ret = bpf_xdp_store_bytes(ctx, offsetof(struct ethhdr, h_dest), (void*) &lo_mac[0], 6);
-
-		hdr.ip->check = iph_csum(hdr.ip);
-		return XDP_TX;
-	}
-
-	return XDP_PASS;
+	hdr.ip->check = iph_csum(hdr.ip);
+	return XDP_TX;
 }
 
 

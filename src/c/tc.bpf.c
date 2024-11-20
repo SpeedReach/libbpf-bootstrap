@@ -101,10 +101,26 @@ iph_csum(struct __sk_buff *ctx)
     return csum_fold_helper(csum);
 }
 
-uint16_t server_port[5] = { 7073, 8073, 9073, 11073, 10073 };
+uint16_t server_port[5] = { 7073, 8073, 9073, 10073, 11073 };
 uint16_t sequencer_port = 7072;
+//uint32_t sequencer_addr = (192 << 24) | (168 << 16) | (50 << 8) | 230;
 uint32_t sequencer_addr = (127 << 24) | (0 << 16) | (0 << 8) | 1;
-uint32_t server_addr = (127 << 24) | (0 << 16) | (0 << 8) | 1;
+uint32_t server_addrs[5] = {
+	(192 << 24) | (168 << 16) | (50 << 8) | 224,
+	(192 << 24) | (168 << 16) | (50 << 8) | 224,
+	(192 << 24) | (168 << 16) | (50 << 8) | 224,
+	(192 << 24) | (168 << 16) | (50 << 8) | 213,
+	(192 << 24) | (168 << 16) | (50 << 8) | 213,
+};
+
+unsigned char server_mac_addrs[5][6] = {
+	{0x9c, 0x2d, 0xcd, 0x3f, 0x67, 0xa4},
+	{0x9c, 0x2d, 0xcd, 0x3f, 0x67, 0xa4},
+	{0x9c, 0x2d, 0xcd, 0x3f, 0x67, 0xa4},
+	{0x9c, 0x2d, 0xcd, 0x48, 0xb1, 0x04},
+	{0x9c, 0x2d, 0xcd, 0x48, 0xb1, 0x04}
+};
+
 
 
 struct l3_fields
@@ -130,9 +146,10 @@ static __always_inline int handle_udp(struct __sk_buff *ctx, struct hdr hdr)
 
 		struct l3_fields l3_original_fields;
 
-		for (int i = 0; i < 2; i++) {
+		for (int i = 0; i < 5; i++) {
+
 			bpf_skb_load_bytes(ctx, ETH_SIZE + offsetof(struct iphdr, saddr), &l3_original_fields, sizeof(l3_original_fields));
-			u32 new_addr = bpf_htonl(server_addr);
+			u32 new_addr = bpf_htonl(server_addrs[i]);
 			int ret = bpf_skb_store_bytes(
 				ctx, ETH_SIZE + offsetof(struct iphdr, daddr), &new_addr,
 				sizeof(u32), BPF_F_RECOMPUTE_CSUM);
@@ -144,7 +161,6 @@ static __always_inline int handle_udp(struct __sk_buff *ctx, struct hdr hdr)
 			int csumret = bpf_l3_csum_replace(ctx, ETH_SIZE + offsetof(struct iphdr, check), 0, l3sum, 0);
 			bpf_printk("csumret %d %d", csumret, i);
 
-
 			u16 new_port = bpf_htons(server_port[i]);
 			ret = bpf_skb_store_bytes(
 				ctx, ETH_SIZE + IP_SIZE + offsetof(struct udphdr, dest), &new_port,
@@ -154,6 +170,15 @@ static __always_inline int handle_udp(struct __sk_buff *ctx, struct hdr hdr)
 			u32 seq = *count;
 			ret = bpf_skb_store_bytes(ctx, ctx->data_end - sizeof(u32) - ctx->data,
 						  &seq, sizeof(u32), BPF_F_RECOMPUTE_CSUM);
+			
+
+			//set mac address
+			ret = bpf_skb_store_bytes(
+				ctx, offsetof(struct ethhdr, h_dest), server_mac_addrs[i],
+				sizeof(server_mac_addrs[i]), 0);
+			bpf_printk("store mac %d %d", ret, i);
+
+
 
 			bpf_printk("store seq %d %d", ret, i);
 			ret = bpf_clone_redirect(ctx, ctx->ifindex, 0);
