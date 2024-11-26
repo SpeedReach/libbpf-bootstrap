@@ -74,37 +74,28 @@ static __always_inline struct hdr try_parse_udp(void* data, void* data_end){
 
 
 
-static __always_inline __u16
-csum_fold_helper(__u64 csum)
-{
-    int i;
-#pragma unroll
-    for (i = 0; i < 4; i++)
-    {
-        if (csum >> 16)
-            csum = (csum & 0xffff) + (csum >> 16);
+static inline __u16 compute_ip_checksum(struct iphdr *ip, void *data_end) {
+    __u16 *next_ip_u16 = (__u16 *)ip;
+    __u16 *end = (__u16 *)data_end;
+    __u32 csum = 0;
+
+    // Ensure that `ip` is valid and does not cross data_end
+    if ((void *)next_ip_u16 + sizeof(*ip) > data_end) {
+        return 0; // Invalid access, return 0
     }
-    return ~csum;
-}
 
-static __always_inline __u16
-iph_csum(struct __sk_buff *ctx)
-{
-    u16 new_sum = 0;
-	bpf_skb_store_bytes(
-		ctx, ETH_SIZE + offsetof(struct iphdr, check), &new_sum,
-		sizeof(u16), BPF_F_RECOMPUTE_CSUM);
+    #pragma clang loop unroll(full)
+    for (int i = 0; i < (sizeof(*ip) >> 1); i++) {
+        csum += *next_ip_u16++;
+    }
 
-	struct iphdr* iph = try_parse_udp((void *)(long)ctx->data, (void *)(long)ctx->data_end).ip;
-
-    unsigned long long csum = bpf_csum_diff(0, 0, (unsigned int *)iph, sizeof(struct iphdr), 0);
-    return csum_fold_helper(csum);
+    return ~((csum & 0xffff) + (csum >> 16));
 }
 
 uint16_t server_port[5] = { 7073, 8073, 9073, 10073, 11073 };
 uint16_t sequencer_port = 7072;
 //uint32_t sequencer_addr = (192 << 24) | (168 << 16) | (50 << 8) | 230;
-uint32_t sequencer_addr = (127 << 24) | (0 << 16) | (0 << 8) | 1;
+uint32_t sequencer_addr = (192 << 24) | (168 << 16) | (50 << 8) | 230;
 uint32_t server_addrs[5] = {
 	(192 << 24) | (168 << 16) | (50 << 8) | 224,
 	(192 << 24) | (168 << 16) | (50 << 8) | 224,
@@ -113,6 +104,8 @@ uint32_t server_addrs[5] = {
 	(192 << 24) | (168 << 16) | (50 << 8) | 213,
 };
 
+unsigned char sequencer_mac_addr[6] = {0x74,0xd4,0xdd, 0x2c, 0xb1, 0x79};
+//02:42:2c:a9:b8:45
 unsigned char server_mac_addrs[5][6] = {
 	{0x9c, 0x2d, 0xcd, 0x3f, 0x67, 0xa4},
 	{0x9c, 0x2d, 0xcd, 0x3f, 0x67, 0xa4},
@@ -122,12 +115,6 @@ unsigned char server_mac_addrs[5][6] = {
 };
 
 
-
-struct l3_fields
-{
-    __u32 saddr;
-    __u32 daddr;
-};
 
 
 static __always_inline int handle_udp(struct __sk_buff *ctx, struct hdr hdr)
@@ -144,25 +131,9 @@ static __always_inline int handle_udp(struct __sk_buff *ctx, struct hdr hdr)
 			bpf_map_update_elem(&counter_map, &key, &initial_value, BPF_ANY);
 		}
 
-		struct l3_fields l3_original_fields;
-
 		for (int i = 0; i < 5; i++) {
-
-			bpf_skb_load_bytes(ctx, ETH_SIZE + offsetof(struct iphdr, saddr), &l3_original_fields, sizeof(l3_original_fields));
-			u32 new_addr = bpf_htonl(server_addrs[i]);
-			int ret = bpf_skb_store_bytes(
-				ctx, ETH_SIZE + offsetof(struct iphdr, daddr), &new_addr,
-				sizeof(u32), BPF_F_RECOMPUTE_CSUM);
-
-			bpf_printk("store addr %d %d", ret, i);
-			
-			struct l3_fields l3_new_fields = { .saddr = l3_original_fields.saddr, .daddr = new_addr };
-			u32 l3sum = bpf_csum_diff((__u32 *)&l3_original_fields, sizeof(l3_original_fields), (__u32 *)&l3_new_fields, sizeof(l3_new_fields), 0);
-			int csumret = bpf_l3_csum_replace(ctx, ETH_SIZE + offsetof(struct iphdr, check), 0, l3sum, 0);
-			bpf_printk("csumret %d %d", csumret, i);
-
 			u16 new_port = bpf_htons(server_port[i]);
-			ret = bpf_skb_store_bytes(
+			int ret = bpf_skb_store_bytes(
 				ctx, ETH_SIZE + IP_SIZE + offsetof(struct udphdr, dest), &new_port,
 				sizeof(u16), BPF_F_RECOMPUTE_CSUM);
 			bpf_printk("store port %d %d ", ret, i);
@@ -170,7 +141,28 @@ static __always_inline int handle_udp(struct __sk_buff *ctx, struct hdr hdr)
 			u32 seq = *count;
 			ret = bpf_skb_store_bytes(ctx, ctx->data_end - sizeof(u32) - ctx->data,
 						  &seq, sizeof(u32), BPF_F_RECOMPUTE_CSUM);
+
+			u16 zero16 = 0;
+			ret = bpf_skb_store_bytes(ctx, ETH_SIZE + IP_SIZE + offsetof(struct udphdr, check),
+							&zero16, sizeof(16), 0);
+
 			
+			u32 new_daddr = bpf_htonl(server_addrs[i]);
+			bpf_skb_store_bytes(ctx, ETH_SIZE + offsetof(struct iphdr, daddr), &new_daddr,
+				sizeof(u32), 0);
+			
+			u32 new_saddr = bpf_htonl(sequencer_addr);
+			bpf_skb_store_bytes(ctx, ETH_SIZE + offsetof(struct iphdr, saddr), &new_saddr,
+				sizeof(u32), 0);
+
+			Elf32_Half check = 0;
+			bpf_skb_store_bytes(ctx, ETH_SIZE + offsetof(struct iphdr, check), &check,
+				sizeof(u16), 0);
+			hdr = try_parse_udp((void*) ctx->data ,(void*) ctx->data_end);
+			if (hdr.udp != NULL)
+				check = compute_ip_checksum(hdr.ip, (void*) ctx->data_end);
+			bpf_skb_store_bytes(ctx, ETH_SIZE + offsetof(struct iphdr, check), &check,
+				sizeof(u16), 0);
 
 			//set mac address
 			ret = bpf_skb_store_bytes(
@@ -178,7 +170,9 @@ static __always_inline int handle_udp(struct __sk_buff *ctx, struct hdr hdr)
 				sizeof(server_mac_addrs[i]), 0);
 			bpf_printk("store mac %d %d", ret, i);
 
-
+			ret = bpf_skb_store_bytes(
+				ctx, offsetof(struct ethhdr, h_source), sequencer_mac_addr,
+				sizeof(sequencer_mac_addr), 0);
 
 			bpf_printk("store seq %d %d", ret, i);
 			ret = bpf_clone_redirect(ctx, ctx->ifindex, 0);
