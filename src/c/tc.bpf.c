@@ -39,7 +39,8 @@ uint32_t server_ips[SERVER_COUNT] = {
 	(192 << 24) | (168 << 16) | (50 << 8) | 219,
 };
 
-unsigned char redirect_mac[6] = { 0x74, 0xd4, 0xdd, 0x2c, 0xb1, 0x79 };
+
+unsigned char redirect_mac[6] = { 0x74, 0xd4, 0xdd, 0x2c, 0xb1, 0xff };
 //9c:2d:cd:3f:67:a4 => 192.168.50.224 => 7073
 //9c:2d:cd:48:b1:04 => 192.168.50.213 => 8073
 //74:d4:dd:2c:b1:79 => 192.168.50.230 => 9073
@@ -62,7 +63,7 @@ struct {
 	__uint(max_entries, 1);
 	__type(key, u32);
 	__type(value, u32);
-} counter_map SEC(".maps");
+} counter_map SEC(".maps"); 
 
 extern int bpf_dynptr_from_skb(struct sk_buff *skb, __u64 flags,
 			       struct bpf_dynptr *ptr__uninit) __ksym;
@@ -73,7 +74,7 @@ extern void *bpf_dynptr_slice(const struct bpf_dynptr *ptr, uint32_t offset, voi
 #define IP_MF	  0x2000
 #define IP_OFFSET 0x1FFF
 
-static bool is_frag_v4(struct iphdr *iph)
+    static bool is_frag_v4(struct iphdr *iph)
 {
 	int offset;
 	int flags;
@@ -167,10 +168,10 @@ int tc_ingress(struct __sk_buff *ctx)
 		}
 	}
 	if (is_last_packet && count != NULL && ctx->data_end - ctx->data >= sizeof(*count)) {
-		u32 seq = *count;
-		int ret = bpf_skb_store_bytes(ctx, ctx->data_end - ctx->data - sizeof(seq), &seq,
-					      sizeof(seq), 0);
-		bpf_printk("replace seq %d %d", ret, seq);
+		//u32 seq = *count;
+		//int ret = bpf_skb_store_bytes(ctx, ctx->data_end - ctx->data - sizeof(seq), &seq,
+		//			      sizeof(seq), 0);
+		//bpf_printk("replace seq %d %d", ret, seq);
 	}
 
 	int ret;
